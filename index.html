@@ -232,9 +232,7 @@
 </div>
 
 <div class="promo-overlay" id="promoOverlay">
-  <div class="promo-box"><h3>Promote Pawn</h3><div class="promo-pieces" id="promoPieces"></div>
-    <div class="btn-row" style="margin-top:16px;justify-content:center;"><button class="btn2" onclick="cancelPromo()" style="flex:0 0 auto;padding:8px 24px;">Cancel</button></div>
-  </div>
+  <div class="promo-box"><h3>Promote Pawn</h3><div class="promo-pieces" id="promoPieces"></div></div>
 </div>
 <div class="gameover-overlay" id="goOverlay"><div class="go-box" id="goBox"></div></div>
 <div class="toast" id="toast"></div>
@@ -469,11 +467,11 @@ function moveToNotation(m,col,before,preCast,preEp){
   const p=before[m.fr][m.fc];let s='';
   if(p.type!=='P'&&p.type!=='K'){
     s+=p.type;
-    const pms=legalMoves(before,col,preCast,preEp);
     const others=[];
     for(let r2=0;r2<8;r2++)for(let c2=0;c2<8;c2++){
       if(r2===m.fr&&c2===m.fc)continue;const q=before[r2][c2];
       if(q&&q.type===p.type&&q.color===col){
+        const pms=legalMoves(before,col,preCast,preEp);
         if(pms.some(pm=>pm.fr===r2&&pm.fc===c2&&pm.tr===m.tr&&pm.tc===m.tc))others.push({r:r2,c:c2});
       }
     }
@@ -556,7 +554,7 @@ function checkDraws(){
 function isEndgame(bd){let q=0,mi=0;for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=bd[r][c];if(!p)continue;if(p.type==='Q')q++;else if(p.type!=='K'&&p.type!=='P')mi++;}return q===0||(q<=2&&mi<=2);}
 function evaluate(bd){
   let score=0;const eg=isEndgame(bd);
-  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){ 
     const p=bd[r][c];if(!p)continue;
     let v=VAL[p.type];let idx=r*8+c;if(p.color==='b')idx=(7-r)*8+c;
     const tbl=p.type==='K'?(eg?PST.KE:PST.KM):PST[p.type];
@@ -598,23 +596,21 @@ function orderMoves(moves,bd,ply){
 
 let searchDeadline=0,searchHit=false;
 
-function quiescence(bd,col,alpha,beta,ply,c,e,hm){
+function quiescence(bd,col,alpha,beta,ply,c,e){
   if(searchHit)return alpha;
   if(Date.now()>searchDeadline){searchHit=true;return alpha;}
-  if(hm>=100||insufficientMaterial(bd))return 0;
   const stand=col==='w'?evaluate(bd):-evaluate(bd);
   let best=stand;
   if(best>=beta)return beta;
   if(best>alpha)alpha=best;
-  const caps=legalMoves(bd,col,c,e).filter(m=>bd[m.tr][m.tc]||m.ep||m.promo);
+  const caps=legalMoves(bd,col,c,e).filter(m=>bd[m.tr][m.tc]||m.ep);
   caps.sort((a,b)=>mvvLva(b,bd)-mvvLva(a,bd));
   for(const m of caps){
     if(ply<=-4)continue;
     const tb=cloneB(bd);makeRaw(tb,m,col);
     const nc={...c};updCast(nc,m,bd);
     const ne=(bd[m.fr][m.fc].type==='P'&&Math.abs(m.tr-m.fr)===2)?{r:(m.fr+m.tr)/2,c:m.fc}:null;
-    const h2=(bd[m.fr][m.fc].type==='P'||bd[m.tr][m.tc]||m.ep)?0:hm+1;
-    const val=-quiescence(tb,col==='w'?'b':'w',-beta,-alpha,ply-1,nc,ne,h2);
+    const val=-quiescence(tb,col==='w'?'b':'w',-beta,-alpha,ply-1,nc,ne);
     if(val>best){
       best=val;
       if(best>=beta)return beta;
@@ -624,7 +620,7 @@ function quiescence(bd,col,alpha,beta,ply,c,e,hm){
   return best;
 }
 
-function negamax(bd,depth,alpha,beta,col,ply,c,e,hm){
+function negamax(bd,depth,alpha,beta,col,ply,c,e){
   if(searchHit)return alpha;
   if(Date.now()>searchDeadline){searchHit=true;return alpha;}
   const opp=col==='w'?'b':'w';
@@ -632,25 +628,23 @@ function negamax(bd,depth,alpha,beta,col,ply,c,e,hm){
   const key=posKey(bd,col,c,e);
   const ttV=ttProbe(key,depth,alpha,beta);
   if(ttV!==null)return ttV;
-  if(hm>=100||insufficientMaterial(bd))return 0;
 
   // null move
   if(depth>=3&&!isCk&&hasNonPawn(bd,col)){
-    const val=-negamax(bd,depth-1-2,-beta,-beta+1,opp,ply+1,c,null,hm);
+    const val=-negamax(bd,depth-1-2,-beta,-beta+1,opp,ply+1,c,null);
     if(val>=beta)return val;
   }
 
   const moves=legalMoves(bd,col,c,e);
   if(!moves.length)return isCk?-INF:0;
-  if(depth<=0)return quiescence(bd,col,alpha,beta,ply,c,e,hm);
+  if(depth<=0)return quiescence(bd,col,alpha,beta,ply,c,e);
   orderMoves(moves,bd,ply);
   let best=-INF,bestM=null,origA=alpha,flag=TT_UP;
   for(const m of moves){
     const tb=cloneB(bd);makeRaw(tb,m,col);
     const nc={...c};updCast(nc,m,bd);
     const ne=(bd[m.fr][m.fc].type==='P'&&Math.abs(m.tr-m.fr)===2)?{r:(m.fr+m.tr)/2,c:m.fc}:null;
-    const h2=(bd[m.fr][m.fc].type==='P'||bd[m.tr][m.tc]||m.ep)?0:hm+1;
-    const val=-negamax(tb,depth-1,-beta,-alpha,opp,ply+1,nc,ne,h2);
+    const val=-negamax(tb,depth-1,-beta,-alpha,opp,ply+1,nc,ne);
     if(val>best){best=val;bestM=m;}
     if(val>alpha){
       alpha=val;
@@ -678,8 +672,7 @@ function searchBestMove(cpuColor,maxD,ms){
       const tb=cloneB(board);makeRaw(tb,m,cpuColor);
       const nc={...cast};updCast(nc,m,board);
       const ne=(board[m.fr][m.fc].type==='P'&&Math.abs(m.tr-m.fr)===2)?{r:(m.fr+m.tr)/2,c:m.fc}:null;
-      const hRoot=(board[m.fr][m.fc].type==='P'||board[m.tr][m.tc]||m.ep)?0:halfMove+1;
-      const val=-negamax(tb,d-1,-INF,INF,opp,1,nc,ne,hRoot);
+      const val=-negamax(tb,d-1,-INF,INF,opp,1,nc,ne);
       if(!searchHit&&val>saved.bs){saved.bs=val;saved.bm=m;}
     }
     if(!searchHit){bestMove=saved.bm;bestScore=saved.bs;}
@@ -704,8 +697,7 @@ function pickCpuMove(cpuColor){
       const tb=cloneB(board);makeRaw(tb,m,cpuColor);
       const nc={...cast};updCast(nc,m,board);
       const ne=(board[m.fr][m.fc].type==='P'&&Math.abs(m.tr-m.fr)===2)?{r:(m.fr+m.tr)/2,c:m.fc}:null;
-      const hRoot=(board[m.fr][m.fc].type==='P'||board[m.tr][m.tc]||m.ep)?0:halfMove+1;
-      if(!searchHit&&negamax(tb,1,-INF,INF,opp,1,nc,ne,hRoot)>MATE)s-=600;
+      if(!searchHit&&negamax(tb,1,-INF,INF,opp,1,nc,ne)>MATE)s-=600;
       return{m,s};
     }).sort((a,b)=>b.s-a.s);
     return scored[Math.floor(Math.random()*Math.max(1,Math.floor(scored.length*.4)))].m;
@@ -862,27 +854,21 @@ function renderOverlay(v){
   ov.innerHTML=svg;
 }
 function drawArrow(x1,y1,x2,y2,color,sz){
-  const ok2=sqSz();
   const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
-  const hs=ok2*.42,hw=hs*.45,in4=ok2*.2;
-  const sx=x1+ux*in4,sy=y1+uy*in4;             // line offset from source square center
-  const ex=x2,ey=y2;                           // arrow tip at exact target center
-  const bx=ex-ux*hs,by=ey-uy*hs;               // head base point
-  const px=-uy*hw,py=ux*hw;                    // perpendicular half-vector
-  return`<line x1="${sx}" y1="${sy}" x2="${bx}" y2="${by}" stroke="${color}" stroke-width="${Math.max(4,ok2*.12)}" stroke-linecap="round" opacity=".75"/>`+
-    `<path d="M ${ex} ${ey} L ${bx+px} ${by+py} L ${bx-px} ${by-py} Z" fill="${color}" opacity=".8"/>`;
+  const hs=sqSz()*.4,ss=sqSz()*.35;
+  const ax=x1+ux*ss,ay=y1+uy*ss,bx=x2-ux*ss,by=y2-uy*ss;
+  return`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${color}" stroke-width="${Math.max(4,sqSz()*.1)}" stroke-linecap="round" opacity=".75"/>`+
+    `<path d="M ${x2-ux*ss} ${y2-uy*ss} l ${-ux*hs-uy*hs*.45} ${-uy*hs+ux*hs*.45} L ${x2-ux*hs+uy*hs*.45} ${y2-uy*hs-ux*hs*.45} Z" fill="${color}" opacity=".8"/>`;
 }
 
 function renderLog(){
-  const el=document.getElementById('moveLog');
-  let html='';
+  const el=document.getElementById('moveLog');el.innerHTML='';
   for(let i=0;i<moveHistory.length;i++){
     const h=moveHistory[i];
     const span=`<span class="ml-mv ${viewIndex===i+1?'cur':''}" onclick="jumpTo(${i})">${h.notation}</span>`;
-    if(h.col==='w'){html+=`<span class="mn">${Math.floor(i/2)+1}.</span> <span class="mw">${span}</span> `;}
-    else{html+=`<span class="mb">${span}</span><br>`;}
+    if(h.col==='w'){el.innerHTML+=`<span class="mn">${Math.floor(i/2)+1}.</span> <span class="mw">${span}</span> `;}
+    else{el.innerHTML+=`<span class="mb">${span}</span><br>`;}
   }
-  el.innerHTML=html;
   el.scrollTop=el.scrollHeight;
 }
 function jumpTo(i){
@@ -903,9 +889,7 @@ function premovePick(r,c){
   const p=board[r][c];
   if(premoveSel){
     if(premoveSel.r===r&&premoveSel.c===c)return null;
-    const src=board[premoveSel.r][premoveSel.c];
     premove={fr:premoveSel.r,fc:premoveSel.c,tr:r,tc:c};
-    if(src&&src.type==='P'&&r===(playerColor==='w'?0:7))premove.promo='Q';
     return null;
   }
   if(p&&p.color===playerColor)return{r,c};
@@ -914,7 +898,7 @@ function premovePick(r,c){
 function executePremove(){
   if(!premove)return;
   if(gameOver||cpuThinking||isReviewing()||turn!==playerColor)return;
-  const m=legalMoves(board,playerColor,cast,ep).find(mm=>mm.fr===premove.fr&&mm.fc===premove.fc&&mm.tr===premove.tr&&mm.tc===premove.tc&&(!premove.promo||mm.promo===premove.promo));
+  const m=legalMoves(board,playerColor,cast,ep).find(mm=>mm.fr===premove.fr&&mm.fc===premove.fc&&mm.tr===premove.tr&&mm.tc===premove.tc);
   premove=null;premoveSel=null;
   if(m)doPlayerMove(m);
 }
@@ -1092,11 +1076,9 @@ function closeGO(){document.getElementById('goOverlay').classList.remove('active
 
 function showPromo(bm){
   const ov=document.getElementById('promoOverlay'),el=document.getElementById('promoPieces');el.innerHTML='';
-  ov.onclick=(e)=>{if(e.target===ov)cancelPromo();};
-  for(const t of['Q','R','B','N']){const b=document.createElement('button');b.textContent=U[t][playerColor];b.onclick=()=>{cancelPromo();doPlayerMove({...bm,promo:t});};el.appendChild(b);}
+  for(const t of['Q','R','B','N']){const b=document.createElement('button');b.textContent=U[t][playerColor];b.onclick=()=>{ov.classList.remove('active');doPlayerMove({...bm,promo:t});};el.appendChild(b);}
   ov.classList.add('active');
 }
-function cancelPromo(){document.getElementById('promoOverlay').classList.remove('active');}
 
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);}
 
@@ -1107,7 +1089,6 @@ function setTC(v){
   if(v==='none')timeControl=null;
   else{const p=v.split('|');timeControl={base:parseInt(p[0])*60*1000,inc:parseInt(p[1])*1000};}
   document.querySelectorAll('#tcSeg button').forEach(b=>b.classList.remove('active'));document.getElementById('tc-'+v).classList.add('active');
-  newGame();
 }
 function flipBoard(){orientation=orientation==='w'?'b':'w';render();}
 function toggleSound(){soundOn=!soundOn;document.getElementById('soundBtn').textContent='Sound: '+(soundOn?'On':'Off');}
@@ -1174,7 +1155,6 @@ function undoMove(){
     // player just moved; undo it (and any CPU move before it)
     if(moveHistory.length)undoOne();
   }
-  gameResult='*';
   renderLog();render();
   premove=null;premoveSel=null;hintMove=null;
   saveLocal();
@@ -1256,29 +1236,17 @@ function fenStr(bd,col,c,e,hm,fm){
 }
 
 function parseFEN(fen){
-  const parts=fen.trim().split(/\s+/);if(parts.length<4)return null;
+  const parts=fen.split(/\s+/);if(parts.length<4)return null;
   const rows=parts[0].split('/');
   if(rows.length!==8)return null;
   const bd=Array.from({length:8},()=>Array(8).fill(null));
-  for(let r=0;r<8;r++){let c2=0;for(const ch of rows[r]){
-    if(ch>='1'&&ch<='8')c2+=parseInt(ch,10);
-    else if('pnbrqkPNBRQK'.includes(ch)){const color=ch===ch.toUpperCase()?'w':'b';bd[r][c2]={type:ch.toUpperCase(),color};c2++;}
-    else return null;
-    if(c2>8)return null;
-  }if(c2!==8)return null;}
-  // validate: one king per side, no pawns on rank 1/8
-  let wK=0,bK=0;
-  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
-    const p=bd[r][c];if(!p)continue;
-    if(p.type==='K'){if(p.color==='w')wK++;else bK++;}
-    if(p.type==='P'&&(r===0||r===7))return null;
-  }
-  if(wK!==1||bK!==1)return null;
+  for(let r=0;r<8;r++){let c2=0;for(const ch of rows[r]){if(ch>='1'&&ch<='8')c2+=parseInt(ch,10);
+    else{const color=ch===ch.toUpperCase()?'w':'b';bd[r][c2]={type:ch.toUpperCase(),color};c2++;}}}
   const col=parts[1]==='b'?'b':'w';
-  const ca=parts[2]==='-'?'':parts[2];
+  const ca=parts[2];
   const c={wK:ca.includes('K'),wQ:ca.includes('Q'),bK:ca.includes('k'),bQ:ca.includes('q')};
   let e=null;
-  if(parts[3]!=='-'){const fc=FILES.indexOf(parts[3][0]),fr=8-parseInt(parts[3][1],10);if(fc>=0&&fr>=0&&parts[3].length===2)e={r:fr,c:fc};}
+  if(parts[3]!=='-'){const fc=FILES.indexOf(parts[3][0]),fr=8-parseInt(parts[3][1],10);if(fc>=0&&fr>=0)e={r:fr,c:fc};}
   return{board:bd,turn:col,cast:c,ep:e,halfMove:parseInt(parts[4])||0,fullMove:parseInt(parts[5])||1};
 }
 
@@ -1321,7 +1289,7 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='f'||e.key==='F')flipBoard();
   else if(e.key==='m'||e.key==='M')toggleSound();
   else if(e.key==='h'||e.key==='H')getHint();
-  else if(e.key==='Escape'){selected=null;legalSel=[];hintMove=null;cancelPromo();renderBoard(viewCtx());}
+  else if(e.key==='Escape'){selected=null;legalSel=[];hintMove=null;renderBoard(viewCtx());}
 });
 
 // ---- Start ----
